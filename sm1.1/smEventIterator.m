@@ -1,5 +1,8 @@
-classdef EventIterator
-    % EventIterator  Extractor of frames with samples from from
+% Copyright (C) 2025 Medical Computer Systems ltd. http://mks.ru
+% Author: Sergei Simonov (ssergei@mks.ru)
+
+classdef smEventIterator
+    % EventIterator  Extractor of frames with samples from 
     % SM-file block in iterator style
     %
     % Event is sruct with fields
@@ -25,7 +28,7 @@ classdef EventIterator
         siginfo
     end
     methods
-        function obj = EventIterator(siginfo, block)
+        function obj = smEventIterator(siginfo, block)
             if (length(siginfo)>255)
                 obj.EVENT_HEADER_SIZE =  obj.EVENT_HEADER_SIZE+1;
             end
@@ -65,7 +68,7 @@ classdef EventIterator
                 error('SMLOADER:DECODE_EVENT', 'Event body is out of range.');
             end
             if (body_symbols > 0)
-                ev.body = char(typecast(obj.block.data(i, ev_end_pos),'uint16'));
+                ev.body = char(typecast(obj.block.data(i: ev_end_pos),'uint16'));
             else
                 ev.body = '';
             end

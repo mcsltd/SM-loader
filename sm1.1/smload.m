@@ -1,77 +1,32 @@
-function r = smload(filename)
-% smload  Load SM-file and returns EEG struct
+% Copyright (C) 2025 Medical Computer Systems ltd. http://mks.ru
+% Author: Sergei Simonov (ssergei@mks.ru)
 
-block_iter = BlockIterator(filename);
+function r = smload(filename)
+% smload Load SM-file and returns EEG struct
+
+%сhecking mex files
+mex_block_ok = check_mex("smcrc32","x=smcrc32([int8(32)]);");
+mex_frame_ok = check_mex("smdecode","x=smdecode([int8(32)],1,2,0.001);");
+if mex_block_ok == false || mex_frame_ok == false
+    warning('SMLOADER:MEX', ['Boosting mex-files not found. The file processing could be slow!\n' ...
+        'Try to run smbuildmex.m to build this files (compiler needed).']);
+end
+
+%checking eeglab functions
+if ~exist('eeg_emptyset','file')
+    % need to start eeglab to add paths to it's functions
+    eeglab('nogui');
+end
+
+block_iter = smBlockIterator(filename, mex_block_ok);
 [block_iter, b0] = block_iter.next();
 if b0.type ~=0
     error('SMLOADER:PARSE','Block0 is missing');
 end
-elements = parse_elements(transpose(char(b0.data)));
 
-% Check file version
-ver = get_elements(elements, 'Version');
-if ~strcmp(ver.data,'1')
-    error('SMLOADER:PARSE', 'Version of SM file %s is not supported', ver)
-end
-
-% Check encoding method
-method = get_elements(elements, 'EncodingMethod');
-if ~strcmp(method.data,'0')
-    error('SMLOADER:PARSE', 'Encoding method of SM file %s is not supported', method)
-end
-
-% Load event types info
-event_types=[];
-try
-    event_types = get_elements(elements, 'Controller', 'EventTypes', 'EventType');
-catch ME
-    if strcmp(ME.identifier,'SMLOADER:ELEMENT_NOT_FOUND')
-        warning('SMLOADER:LOAD','Events description not found');
-    else
-        rethrow(ME)
-    end
-end
-event_desriptions = {};
-for i = 1: length(event_types)
-    evt = event_types(i);
-    if (isfield(evt,'attributes'))
-        etype = NaN;
-        edescr = '';
-        for j = 1 : length(event_types(i).attributes)
-            if strcmp(event_types(i).attributes(j).atrname, 'type')
-                etype = str2double(event_types(i).attributes(j).atrval);
-            elseif strcmp(event_types(i).attributes(j).atrname, 'description')
-                edescr =event_types(i).attributes(j).atrval;
-            end
-        end
-        if ~isnan(etype)
-            event_desriptions{etype} = strtrim(deblank(edescr));
-        end
-    end
-end
-
-%Load signals informataion
-signals = [];
-try
-    signals = get_elements(elements, 'Controller', 'Record',  'Lead', 'Signals');
-catch ME
-    if strcmp(ME.identifier,'SMLOADER:ELEMENT_NOT_FOUND')
-        warning('SMLOADER:LOAD','Signal descriptions not found');
-    else
-        rethrow(ME)
-    end
-end
-% For each channel make struct siginfo 
-% with fields named like parametres and values
-tmp = parse_element_data_deep(signals);
-signals = tmp.data;
-siginfo = cell(length(signals), 1);
-for i = 1 : length(signals)
-    for j =  1 : length(signals(i).data)
-        for k =  1 : length(signals(i).data(j).data)
-            siginfo{i}.(lower(signals(i).data(j).data(k).name)) = signals(i).data(j).data(k).data;
-        end
-    end
+[event_desriptions, siginfo] = parse_block0(b0);
+if isempty(siginfo)
+    error('SMLOADER:PARSE','File doesn''t contains any signal information');
 end
 
 % Preview. Calculate min and max sample number for each channel
@@ -82,15 +37,24 @@ for i = 1: length(siginfo)
     siginfo{i}.('max_tick') = [];
 end
 
-all_frames = cell(1,16000);
-all_events = cell(1,16000);
+presize = 16000;
+% we really can't predict the number of frames
+% if isfield(siginfo{1},durationticks)
+%     if ~isempty(siginfo{1}.durationticks)
+%         presize = siginfo{1}.durationticks/256;
+%     end
+% end
+all_frames = cell(1, presize);
+all_events = cell(1, presize);
 frame_counter = uint64(0);
 event_counter = uint64(0);
+
+frame_iter = smFrameIterator(siginfo, mex_frame_ok);
 while true
     [block_iter, bx] = block_iter.next();
     if isempty(bx); break; end
     if bx.type == 1
-        frame_iter = SignalFramelterator(siginfo, bx);
+        frame_iter=frame_iter.reset(bx);
         while true
             [frame_iter, frame] = frame_iter.next();
             if isempty(frame); break; end
@@ -98,6 +62,9 @@ while true
                 siginfo{frame.channel}.min_tick = frame.start_tick;
                 siginfo{frame.channel}.max_tick = frame.start_tick + frame.size - 1;
             else
+                if  siginfo{frame.channel}.max_tick >= frame.start_tick
+                    error("SMLOAD:PARSE","unsorted data frames is not unsupprted %d >= %d", siginfo{frame.channel}.max_tick, frame.start_tick)
+                end
                 siginfo{frame.channel}.max_tick = max([siginfo{frame.channel}.max_tick, frame.start_tick + frame.size-1]);
                 siginfo{frame.channel}.min_tick = min([siginfo{frame.channel}.min_tick, frame.start_tick]);
             end
@@ -106,7 +73,7 @@ while true
             all_frames{frame_counter} = frame;
         end
     elseif bx.type == 2
-        ev_iter = EventIterator(siginfo, bx);
+        ev_iter = smEventIterator(siginfo, bx);
         while true
             [ev_iter,ev] = ev_iter.next();
             if isempty(ev); break; end
@@ -151,18 +118,31 @@ end
 
 % Placing EEG.data
 offset = -gmin_tick + 1;
+
 for i = 1 : length(all_frames)
     frame = all_frames{i};
     block = block_iter.extract_block(frame.block_id);
-    frame_iter = SignalFramelterator(siginfo, block);
+    frame_iter = frame_iter.reset(block);
     xxx = frame_iter.decode(frame);
     EEG.data(frame.channel, offset+frame.start_tick:offset+frame.start_tick+frame.size-1) = xxx;
 end
 
+% check signal gaps and fill it with last known value
+% expecting that frames go in odered way in file
+%[~, sorted_indexes] = sort(all_frames.start_tick);
+%all_frames = all_frames(sorted_indexes);
+for i = 1 : length(all_frames) - 1
+    a = all_frames{i}.start_tick + all_frames{i}.size + offset;
+    b = all_frames{i+1}.start_tick + offset;
+    if b>a
+        warning('SMLOADER:gap', 'filling gap of size %d with ''last known element'' startegy', b-a);
+        EEG.data(frame.channel, a : b-1) = zeros(1,b-a,"single") + EEG.data(a-1);
+    end
+end
+
 % Placing EEG.event
-% TODO, check should i sort events by latency
 for i = 1 : event_counter
-    urev.type = event_desriptions{all_events{i}.type};
+    urev.type = event_desriptions{all_events{i}.type+1};
     urev.channel = siginfo{all_events{i}.channel}.name;
     urev.latency = all_events{i}.start_tick + offset;
     urev.creation_time = string(datetime(all_events{i}.crtime, 'ConvertFrom','posixtime','Format','dd-MMM-uuuu HH:mm:ss'));
@@ -180,45 +160,11 @@ end
 r = EEG;
 end
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% =================== Helper functions ================================= %
 
 function res = extractfiled(cs, name)
 res = zeros(1, length(cs), class(cs{1}.(name)));
 for i = 1 :length(cs)
     res(i) = cs{i}.(name);
-end
-end
-
-function e = parse_element_data_deep(e)
-if isempty(e.data)
-    return;
-end
-data = parse_elements(e.data);
-if ~isempty(data)
-    e.data = data;
-    for i = 1 : length(e.data)
-        e.data(i) = parse_element_data_deep(e.data(i));
-    end
-    return
-else
-    % not an element
-    if e.data(end) == char(0)
-        % строка
-        if length(e.data)>1
-            e.data = char(e.data(1:end-1));
-        else
-            e.data = '';
-        end
-    elseif regexpi(e.data,'^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$')
-        % uuid - оставляем строкой
-    else
-         % uuid - число
-        val =  str2double(e.data);
-        if ~isnan(val)
-            e.data = val;
-        else
-            warning('unexpected type of data: %s for element %s', e.data, e.name);
-        end
-    end
 end
 end

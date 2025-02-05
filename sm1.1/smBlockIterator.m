@@ -1,9 +1,12 @@
-classdef BlockIterator
+% Copyright (C) 2025 Medical Computer Systems ltd. http://mks.ru
+% Author: Sergei Simonov (ssergei@mks.ru)
+
+classdef smBlockIterator
     % BlockIterator  Extractor of blocks from SM-file in iterator style
     %
     % Block is sruct with fields
     %   id - unique id of block, equals offset of start position in file
-    %   data - uint8 array of data
+    %   data - int8 array of data
     %   type - type of block
     %   crc - crc of block
     %
@@ -84,65 +87,89 @@ classdef BlockIterator
     end
 
     properties (Access = protected)
-        data
         pos
-        size
+        fid = -1
+        mex_support = false
     end
 
     methods (Access = protected)
-        function crc = calc_crc32(obj, pos, size)
+        function crc = calc_crc32(obj, data)
             crc = uint32(hex2dec('FFFFFFFF'));
-            for i = pos: pos+size-1
-                table_index = mod(bitxor( crc, uint32(obj.data(i))), 256)+1;
+            for i = 1: length(data)
+                if data(i) < 0
+                    x = uint32(bitand( data(i),  int8(127))) + uint32(128);
+                else 
+                    x = uint32(data(i));
+                end
+                table_index = bitand(bitxor(crc, x), uint32(255)) + 1;
                 crc = bitxor( bitshift(crc,-8), obj.crc32_table(table_index));
             end
-            crc = bitcmp(crc,'uint32');
+            crc = bitcmp(crc);
         end
     end
-    methods
 
-        function obj = BlockIterator(filepath)
-            if ~exist(filepath, 'file')
-                error('SMLOADER:FILE_NOT_FOUND','File not found');
+    methods
+        function obj = smBlockIterator(filepath, mex_support)
+            [obj.fid, errmsg] = fopen(filepath,"r","l");
+            if obj.fid == -1
+               error('SMLOADER:FILE', errmsg)
             end
-            mmf = memmapfile(filepath, 'Format', 'uint8', 'Writable', false);
-            obj.data = mmf.Data;
-            obj.pos = 1;
-            obj.size = length(obj.data);
+            obj.mex_support = mex_support;
+        end
+
+        function delete(obj)
+           if obj.fid >= 0
+               fclose(obj.fid);
+           end
         end
 
         function block = extract_block(obj, id)
-            i = id - 1;
-            prefix = typecast(obj.data(i+1:i+2),'uint16');
+            if exist('id','var')
+                fseek(obj.fid, id, "bof");
+                block.id = id;
+            else
+                block.id = ftell(obj.fid);
+            end
+    
+            prefix = fread(obj.fid, 1, "uint16");
+            if isempty(prefix) 
+                block = [];
+                return
+            end
             if prefix ~= obj.BLOCK_PREFIX
                 error('SMLOADER:PARSE_BLOCK','Unexpected block prefix: %x', prefix);
             end
-            block.type = obj.data(i+3);
-            block.data_size = typecast(obj.data(i+4:i+7),'uint32');
+            
+            block.type = fread(obj.fid, 1, "uint8");
+            block.data_size = fread(obj.fid, 1, "uint32");
             block.full_size = block.data_size + obj.BLOCK_HEADER_SIZE + obj.BLOCK_SUFFIX_SIZE;
-            if i + block.full_size > obj.size
-                error('SMLOADER:PARSE_BLOCK','Block size %d exeeds end of file', block.full_size);
-            end
             if block.data_size > 0
-                block.data = obj.data(i + 8 : i + 8 + block.data_size - 1);
+                block.data = fread(obj.fid,block.data_size,"int8=>int8");
             else
                 block.data = [];
             end
-            block.crc = typecast(obj.data(i + block.full_size - 3: i + block.full_size),'uint32');
-            block.id = id;
+            block.crc = fread(obj.fid, 1, "uint32=>uint32");
+            if feof(obj.fid)
+               block = [];
+            end
         end
 
         function [obj, block] = next(obj)
-            if obj.pos > obj.size
-                block = [];
-            else
-                block = obj.extract_block(obj.pos);
-                crc_check = obj.calc_crc32(obj.pos+obj.BLOCK_HEADER_SIZE, block.data_size);
-                if block.crc ~= crc_check
-                    error('SMLOADER:PARSE_BLOCK','Block CRC mismatch');
+            block = obj.extract_block();
+            if ~isempty(block)
+                if obj.mex_support
+                   crc_check = smcrc32(block.data);
+                else
+                   crc_check = obj.calc_crc32(block.data);
                 end
-                obj.pos = obj.pos + block.full_size;
+                if block.crc ~= crc_check
+                    error('SMLOADER:PARSE_BLOCK','block %d CRC mismatch', block.id);
+                end
             end
+        end
+
+        function [obj] = reset(obj)
+            fseek(obj.fid,0,"bof");
         end
 
     end %methods

@@ -8,18 +8,8 @@
 %   trystrs    - [struct] "try" strings for menu callbacks.
 %   catchstrs  - [struct] "catch" strings for menu callbacks.
 %
-% Notes:
-%   This plugins consist of the following Matlab files:
-%
-% Create a plugin:
-%   For more information on how to create an EEGLAB plugin see the
-%   help message of eegplugin_besa() or visit http://www.sccn.ucsd.edu/eeglab/contrib.html
-%
-% Author: Sergei Simonov, Medical Computer Systems, Russia, 2024
-%
-% See also: pop_sm_read(), sm_read()
-
-% Copyright (C) 2024 Medical Computer Systems ltd. http://mks.ru
+% Copyright (C) 2025 Medical Computer Systems ltd. http://mks.ru
+% Author: Sergei Simonov (ssergei@mks.ru)
 %
 % This program is free software; you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -30,10 +20,7 @@
 % but WITHOUT ANY WARRANTY; without even the implied warranty of
 % MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 % GNU General Public License for more details.
-%
-% You should have received a copy of the GNU General Public License
-% along with this program; if not, write to the Free Software
-% Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+
 
 function vers = eegplugin_sm(fig, trystrs, catchstrs)
 

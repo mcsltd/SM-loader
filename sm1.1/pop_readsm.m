@@ -9,8 +9,10 @@
 % Outputs:
 %   EEG            - EEGLAB data structure
 %
-% Author: Sergei Simonov, Medical Computer Systems, Russia, 2024
-%
+
+% Copyright (C) 2025 Medical Computer Systems ltd. http://mks.ru
+% Author: Sergei Simonov (ssergei@mks.ru)
+
 
 function [EEG, com] = pop_readsm(filename)
 EEG = [];
