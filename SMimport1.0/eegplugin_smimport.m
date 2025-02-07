@@ -1,15 +1,15 @@
-% eegplugin_sm() - Plugin to import SM data formats
+% eegplugin_smimport() - Plugin to import EEG from an SM file.
 %
 % Usage:
-%   >> eegplugin_sm(fig, trystrs, catchstrs);
+%   >> eegplugin_smimport(fig, trystrs, catchstrs);
 %
 % Inputs:
 %   fig        - [integer]  EEGLAB figure
 %   trystrs    - [struct] "try" strings for menu callbacks.
 %   catchstrs  - [struct] "catch" strings for menu callbacks.
 %
-% Copyright (C) 2025 Medical Computer Systems ltd. http://mks.ru
 % Author: Sergei Simonov (ssergei@mks.ru)
+% Copyright (C) 2025 Medical Computer Systems ltd. http://mks.ru
 %
 % This program is free software; you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -22,9 +22,9 @@
 % GNU General Public License for more details.
 
 
-function vers = eegplugin_sm(fig, trystrs, catchstrs)
+function vers = eegplugin_smimport(fig, trystrs, catchstrs)
 
-vers = 'sm1.1';
+vers = 'smimport1.0';
 if nargin < 3
     error('eegplugin_sm requires 3 arguments');
 end

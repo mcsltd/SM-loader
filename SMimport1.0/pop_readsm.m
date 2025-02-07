@@ -1,11 +1,11 @@
-% POP_READEGI - load a EGI EEG file (pop out window if no arguments).
+% POP_READSM - load EEG from an SM file (pop out window if no arguments).
 %
 % Usage:
 %   >> EEG = pop_readsm;             % a window pops up
 %   >> EEG = pop_readsm( filename );
 %
 % Inputs:
-%   filename       - EGI file name
+%   filename       - path to SM file
 % Outputs:
 %   EEG            - EEGLAB data structure
 %
@@ -26,9 +26,9 @@ if nargin < 1
     if filename == 0
         return;
     end
-    filename = [filepath filename];
+    fullpath = [filepath filename];
 end
-EEG = smload(filename);
+EEG = smload(fullpath);
 if nargout > 1
     com = sprintf( 'EEG = pop_readsm(%s);', filename);
 end
