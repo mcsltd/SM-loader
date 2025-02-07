@@ -1,9 +1,12 @@
 % Copyright (C) 2025 Medical Computer Systems ltd. http://mks.ru
 % Author: Sergei Simonov (ssergei@mks.ru)
 
-function smtest(test_dir)
+function smtest(wild_mask)
+% smtest - try to load with SMimport evey file pointed with wildcard mask
+% You have to run eeglab before runing      
+% Example of call: smtest('C:\SomeDir\**\*.sm');
 
-dirData = dir(test_dir);
+dirData = dir(wild_mask);
 if isempty(dirData)
     disp('No files found for test');
 end
@@ -17,7 +20,7 @@ for i=1:length(dirData)
     ecg = smload(fpath);
     pos = pos + 1;
     catch ME
-        cprintf('Errors','Error: %s', ME.message);
+        fprintf('Error: %s', ME.message);
         neg = neg + 1;
         continue;
     end
